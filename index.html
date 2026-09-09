@@ -134,10 +134,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     <script>
-        // Enlace publicado en CSV desde tu Google Sheet
         const sheetCSVUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTh321wbalb2EUtQVtTQRejkzuBF2fJM9nywoBYEQn8vdom5Bit53LJiZahdyZmAaiw21mpm0XJG-94/pub?gid=0&single=true&output=csv';
 
-        // Imagen de Portada por Defecto
         const fotoPorDefault = "https://lh3.googleusercontent.com/d/1tOBYUDj-pyHrvCHgJ5bojWOs3kiUavO6=s0";
 
         let baseDatos = [];
@@ -169,9 +167,15 @@
 
         async function cargarBaseDatos() {
             try {
-                // Captura el ID de la URL si se accede desde un enlace directo de presentación (?id=...)
                 const params = new URLSearchParams(window.location.search);
                 const idFotoEspecifica = params.get('id');
+                const modoLimpio = params.get('ui') === 'clean' || params.get('ui') === 'oculto';
+
+                // Si viene activo el modo limpio/presentación, oculta controles
+                if (modoLimpio) {
+                    document.getElementById('filter-panel').style.display = 'none';
+                    document.getElementById('gallery').style.display = 'none';
+                }
 
                 const response = await fetch(sheetCSVUrl);
                 const data = await response.text();
@@ -193,27 +197,28 @@
                     }
                 });
 
-                poblarFiltroNucleos();
-                poblarFiltroFincas();
-                poblarFiltroLotes();
+                if (!modoLimpio) {
+                    poblarFiltroNucleos();
+                    poblarFiltroFincas();
+                    poblarFiltroLotes();
+                }
 
-                // Determina si abre la portada o la foto directa solicitada
                 if (idFotoEspecifica) {
                     const fotoEncontrada = baseDatos.find(item => item.idDrive === idFotoEspecifica);
                     if (fotoEncontrada) {
                         cargarFoto(fotoEncontrada.url);
-                        renderizarGaleria(baseDatos, false, fotoEncontrada.idDrive);
+                        if (!modoLimpio) renderizarGaleria(baseDatos, false, fotoEncontrada.idDrive);
                     } else {
                         cargarFoto(`https://lh3.googleusercontent.com/d/${idFotoEspecifica}=s0`);
-                        renderizarGaleria(baseDatos, false);
+                        if (!modoLimpio) renderizarGaleria(baseDatos, false);
                     }
                 } else {
                     cargarFoto(fotoPorDefault);
-                    renderizarGaleria(baseDatos, false);
+                    if (!modoLimpio) renderizarGaleria(baseDatos, false);
                 }
 
             } catch (error) {
-                console.error("Error al conectar con la base de datos de Google Sheets:", error);
+                console.error("Error al cargar la base de datos:", error);
             }
         }
 
