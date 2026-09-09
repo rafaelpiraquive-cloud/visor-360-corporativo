@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor 360 Corporativo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <style>
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #000; 
+        }
+        
+        #panorama { 
+            width: 100vw; 
+            height: 100vh; 
+        }
+        
+        /* Panel superior de filtros */
+        #filter-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 12px 20px;
+            border-radius: 16px;
+            z-index: 1000;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-group label {
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        select {
+            background: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            min-width: 140px;
+        }
+
+        select:focus { 
+            border-color: #3b82f6; 
+        }
+
+        /* Galería inferior de botones */
+        #gallery {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 12px 20px;
+            border-radius: 30px;
+            max-width: 90%;
+            overflow-x: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-photo {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+
+        .btn-photo:hover { 
+            background: #1d4ed8; 
+            transform: translateY(-2px); 
+        }
+        
+        .btn-photo.active { 
+            background: #16a34a; 
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Panel de Selección de Filtros -->
+    <div id="filter-panel">
+        <div class="filter-group">
+            <label for="select-nucleo">Núcleo</label>
+            <select id="select-nucleo"><option value="">Todos los Núcleos</option></select>
+        </div>
+        <div class="filter-group">
+            <label for="select-finca">Finca</label>
+            <select id="select-finca"><option value="">Todas las Fincas</option></select>
+        </div>
+        <div class="filter-group">
+            <label for="select-lote">Lote</label>
+            <select id="select-lote"><option value="">Todos los Lotes</option></select>
+        </div>
+    </div>
+
+    <!-- Contenedores del Visor 360 y Galería -->
+    <div id="panorama"></div>
+    <div id="gallery"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <script>
+        const sheetCSVUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTh321wbalb2EUtQVtTQRejkzuBF2fJM9nywoBYEQn8vdom5Bit53LJiZahdyZmAaiw21mpm0XJG-94/pub?gid=0&single=true&output=csv';
+
+        // IMAGEN DE PORTADA POR DEFECTO
+        const fotoPorDefault = "https://lh3.googleusercontent.com/d/1tOBYUDj-pyHrvCHgJ5bojWOs3kiUavO6=s0";
+
+        let baseDatos = [];
+        let viewer;
+
+        function obtenerURLLimpia(urlDrive) {
+            const match = urlDrive.match(/\/d\/([a-zA-Z0-9_-]+)/) || urlDrive.match(/id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return `https://lh3.googleusercontent.com/d/${match[1]}=s0`;
+            }
+            return urlDrive;
+        }
+
+        function cargarFoto(url) {
+            if (viewer) viewer.destroy();
+            viewer = pannellum.viewer('panorama', {
+                "type": "equirectangular",
+                "panorama": url,
+                "autoLoad": true,
+                "autoRotate": -0.5,
+                "hfov": 100,
+                "minHfov": 40,
+                "maxHfov": 120,
+                "crossOrigin": "anonymous"
+            });
+        }
+
+        async function cargarBaseDatos() {
+            try {
+                // Carga inicial de la portada
+                cargarFoto(fotoPorDefault);
+
+                const response = await fetch(sheetCSVUrl);
+                const data = await response.text();
+                
+                const filas = data.split('\n').slice(1);
+                baseDatos = [];
+
+                filas.forEach(fila => {
+                    const col = fila.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                    if (col.length >= 5 && col[4]) {
+                        baseDatos.push({
+                            nucleo: col[0],
+                            finca: col[1],
+                            lote: col[2],
+                            fecha: col[3],
+                            url: obtenerURLLimpia(col[4])
+                        });
+                    }
+                });
+
+                poblarFiltroNucleos();
+                poblarFiltroFincas();
+                poblarFiltroLotes();
+                renderizarGaleria(baseDatos, false); // No cambia la portada al inicio
+
+            } catch (error) {
+                console.error("Error al cargar Google Sheets:", error);
+            }
+        }
+
+        function poblarFiltroNucleos() {
+            const selectNucleo = document.getElementById('select-nucleo');
+            const nucleosUnicos = [...new Set(baseDatos.map(item => item.nucleo))].filter(Boolean);
+
+            selectNucleo.innerHTML = '<option value="">Todos los Núcleos</option>';
+            nucleosUnicos.forEach(n => {
+                selectNucleo.innerHTML += `<option value="${n}">${n}</option>`;
+            });
+        }
+
+        function poblarFiltroFincas() {
+            const nucleoSel = document.getElementById('select-nucleo').value;
+            const selectFinca = document.getElementById('select-finca');
+
+            const fincasFiltradas = baseDatos
+                .filter(item => !nucleoSel || item.nucleo === nucleoSel)
+                .map(item => item.finca);
+
+            const fincasUnicas = [...new Set(fincasFiltradas)].filter(Boolean);
+
+            selectFinca.innerHTML = '<option value="">Todas las Fincas</option>';
+            fincasUnicas.forEach(f => {
+                selectFinca.innerHTML += `<option value="${f}">${f}</option>`;
+            });
+        }
+
+        function poblarFiltroLotes() {
+            const nucleoSel = document.getElementById('select-nucleo').value;
+            const fincaSel = document.getElementById('select-finca').value;
+            const selectLote = document.getElementById('select-lote');
+
+            const lotesFiltrados = baseDatos
+                .filter(item => (!nucleoSel || item.nucleo === nucleoSel) && (!fincaSel || item.finca === fincaSel))
+                .map(item => item.lote);
+
+            const lotesUnicos = [...new Set(lotesFiltrados)].filter(Boolean);
+
+            selectLote.innerHTML = '<option value="">Todos los Lotes</option>';
+            lotesUnicos.forEach(l => {
+                selectLote.innerHTML += `<option value="${l}">${l}</option>`;
+            });
+        }
+
+        // Eventos de cambio en los filtros: Solo filtran los botones inferiores
+        document.getElementById('select-nucleo').addEventListener('change', function() {
+            poblarFiltroFincas();
+            poblarFiltroLotes();
+            filtrarYRenderizar();
+        });
+
+        document.getElementById('select-finca').addEventListener('change', function() {
+            poblarFiltroLotes();
+            filtrarYRenderizar();
+        });
+
+        document.getElementById('select-lote').addEventListener('change', function() {
+            filtrarYRenderizar();
+        });
+
+        function filtrarYRenderizar() {
+            const nucleoSel = document.getElementById('select-nucleo').value;
+            const fincaSel = document.getElementById('select-finca').value;
+            const loteSel = document.getElementById('select-lote').value;
+
+            const resultados = baseDatos.filter(item => {
+                return (!nucleoSel || item.nucleo === nucleoSel) &&
+                       (!fincaSel || item.finca === fincaSel) &&
+                       (!loteSel || item.lote === loteSel);
+            });
+
+            // Siempre enviamos false para que el filtro mantenga la pantalla actual (la portada) hasta que se haga clic en un botón
+            renderizarGaleria(resultados, false);
+        }
+
+        function renderizarGaleria(lista, autocargarFoto = false) {
+            const container = document.getElementById('gallery');
+            container.innerHTML = '';
+
+            if (lista.length === 0) {
+                container.innerHTML = '<span style="color:white; font-size:13px; font-weight:600;">No hay registros con este filtro.</span>';
+                return;
+            }
+
+            if (autocargarFoto && lista.length > 0) {
+                cargarFoto(lista[0].url);
+            }
+
+            lista.forEach((item, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-photo' + (autocargarFoto && idx === 0 ? ' active' : '');
+                btn.innerText = `${item.lote} (${item.fecha})`;
+                btn.onclick = (e) => {
+                    document.querySelectorAll('.btn-photo').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    cargarFoto(item.url); // Solo aquí se cambia la foto del visor
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        cargarBaseDatos();
+    </script>
+</body>
+</html>
