@@ -134,20 +134,23 @@
 
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
     <script>
+        // Enlace publicado en CSV desde tu Google Sheet
         const sheetCSVUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTh321wbalb2EUtQVtTQRejkzuBF2fJM9nywoBYEQn8vdom5Bit53LJiZahdyZmAaiw21mpm0XJG-94/pub?gid=0&single=true&output=csv';
 
-        // IMAGEN DE PORTADA POR DEFECTO
+        // Imagen de Portada por Defecto
         const fotoPorDefault = "https://lh3.googleusercontent.com/d/1tOBYUDj-pyHrvCHgJ5bojWOs3kiUavO6=s0";
 
         let baseDatos = [];
         let viewer;
 
-        function obtenerURLLimpia(urlDrive) {
+        function extraerIDDrive(urlDrive) {
             const match = urlDrive.match(/\/d\/([a-zA-Z0-9_-]+)/) || urlDrive.match(/id=([a-zA-Z0-9_-]+)/);
-            if (match && match[1]) {
-                return `https://lh3.googleusercontent.com/d/${match[1]}=s0`;
-            }
-            return urlDrive;
+            return match && match[1] ? match[1] : null;
+        }
+
+        function obtenerURLLimpia(urlDrive) {
+            const id = extraerIDDrive(urlDrive);
+            return id ? `https://lh3.googleusercontent.com/d/${id}=s0` : urlDrive;
         }
 
         function cargarFoto(url) {
@@ -166,8 +169,9 @@
 
         async function cargarBaseDatos() {
             try {
-                // Carga inicial de la portada
-                cargarFoto(fotoPorDefault);
+                // Captura el ID de la URL si se accede desde un enlace directo de presentación (?id=...)
+                const params = new URLSearchParams(window.location.search);
+                const idFotoEspecifica = params.get('id');
 
                 const response = await fetch(sheetCSVUrl);
                 const data = await response.text();
@@ -183,6 +187,7 @@
                             finca: col[1],
                             lote: col[2],
                             fecha: col[3],
+                            idDrive: extraerIDDrive(col[4]),
                             url: obtenerURLLimpia(col[4])
                         });
                     }
@@ -191,10 +196,24 @@
                 poblarFiltroNucleos();
                 poblarFiltroFincas();
                 poblarFiltroLotes();
-                renderizarGaleria(baseDatos, false); // No cambia la portada al inicio
+
+                // Determina si abre la portada o la foto directa solicitada
+                if (idFotoEspecifica) {
+                    const fotoEncontrada = baseDatos.find(item => item.idDrive === idFotoEspecifica);
+                    if (fotoEncontrada) {
+                        cargarFoto(fotoEncontrada.url);
+                        renderizarGaleria(baseDatos, false, fotoEncontrada.idDrive);
+                    } else {
+                        cargarFoto(`https://lh3.googleusercontent.com/d/${idFotoEspecifica}=s0`);
+                        renderizarGaleria(baseDatos, false);
+                    }
+                } else {
+                    cargarFoto(fotoPorDefault);
+                    renderizarGaleria(baseDatos, false);
+                }
 
             } catch (error) {
-                console.error("Error al cargar Google Sheets:", error);
+                console.error("Error al conectar con la base de datos de Google Sheets:", error);
             }
         }
 
@@ -241,7 +260,6 @@
             });
         }
 
-        // Eventos de cambio en los filtros: Solo filtran los botones inferiores
         document.getElementById('select-nucleo').addEventListener('change', function() {
             poblarFiltroFincas();
             poblarFiltroLotes();
@@ -268,11 +286,10 @@
                        (!loteSel || item.lote === loteSel);
             });
 
-            // Siempre enviamos false para que el filtro mantenga la pantalla actual (la portada) hasta que se haga clic en un botón
             renderizarGaleria(resultados, false);
         }
 
-        function renderizarGaleria(lista, autocargarFoto = false) {
+        function renderizarGaleria(lista, autocargarFoto = false, idActivo = null) {
             const container = document.getElementById('gallery');
             container.innerHTML = '';
 
@@ -287,12 +304,13 @@
 
             lista.forEach((item, idx) => {
                 const btn = document.createElement('button');
-                btn.className = 'btn-photo' + (autocargarFoto && idx === 0 ? ' active' : '');
+                const esActivo = idActivo ? (item.idDrive === idActivo) : (autocargarFoto && idx === 0);
+                btn.className = 'btn-photo' + (esActivo ? ' active' : '');
                 btn.innerText = `${item.lote} (${item.fecha})`;
                 btn.onclick = (e) => {
                     document.querySelectorAll('.btn-photo').forEach(b => b.classList.remove('active'));
                     e.target.classList.add('active');
-                    cargarFoto(item.url); // Solo aquí se cambia la foto del visor
+                    cargarFoto(item.url);
                 };
                 container.appendChild(btn);
             });
